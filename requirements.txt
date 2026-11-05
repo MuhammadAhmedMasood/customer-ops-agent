@@ -1,0 +1,11 @@
+# Runtime dependencies (what the app needs to run). Pinned for reproducible builds.
+fastapi==0.162.0
+uvicorn==0.54.0
+pydantic==2.14.3
+langgraph==1.2.20
+langchain-core==1.7.6
+langchain-openai==1.7.4
+langfuse==5.2.0
+python-dotenv==1.2.4
+httpx==0.28.1
+numpy==2.5.4  # needed by InMemoryVectorStore (similarity search)

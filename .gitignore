@@ -1,1 +1,16 @@
+# Secrets
 .env
+
+# Generated database (rebuild with: python data/seed.py)
+data/shop.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+CLAUDE.md
