@@ -1,10 +1,17 @@
 """Processing a ticket after the webhook has accepted it: run the agent graph."""
 
+import json
 from contextlib import closing
 
 from app.agent.graph import graph
 from app.db.database import get_connection
 from app.tracing import tracing_config
+
+# The parts of the final state worth showing on the demo page (GET /tickets/{id}).
+RESULT_KEYS = [
+    "injection_flagged", "category", "order_id", "order", "facts", "policy_snippets",
+    "draft_reply", "proposed_action", "needs_approval", "citations",
+]
 
 
 def process_ticket(ticket_id: str) -> None:
@@ -20,12 +27,14 @@ def process_ticket(ticket_id: str) -> None:
     except Exception as exc:
         # Background tasks have no caller to report errors to, so record the failure.
         print(f"[process_ticket] {ticket_id} failed: {exc!r}", flush=True)
-        _save(ticket_id, status="failed", category=None)
+        _save(ticket_id, status="failed", category=None, result=None)
         return
+
+    summary = {key: result.get(key) for key in RESULT_KEYS}
 
     if result["injection_flagged"]:
         print(f"[process_ticket] {ticket_id}: flagged, escalated", flush=True)
-        _save(ticket_id, status="flagged", category=None)
+        _save(ticket_id, status="flagged", category=None, result=summary)
         return
 
     order = result.get("order")
@@ -37,13 +46,13 @@ def process_ticket(ticket_id: str) -> None:
         f"citations={result['citations']}",
         flush=True,
     )
-    _save(ticket_id, status="processed", category=result["category"])
+    _save(ticket_id, status="processed", category=result["category"], result=summary)
 
 
-def _save(ticket_id: str, status: str, category: str | None) -> None:
+def _save(ticket_id: str, status: str, category: str | None, result: dict | None) -> None:
     with closing(get_connection()) as conn:
         conn.execute(
-            "UPDATE tickets SET status = ?, category = ? WHERE ticket_id = ?",
-            (status, category, ticket_id),
+            "UPDATE tickets SET status = ?, category = ?, result = ? WHERE ticket_id = ?",
+            (status, category, json.dumps(result) if result else None, ticket_id),
         )
         conn.commit()

@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "https://shopco-agent-1089782529263.europe-west2.run.app/$1"
+    }
+  ]
+}

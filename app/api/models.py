@@ -42,6 +42,16 @@ class TicketAccepted(BaseModel):
     status: Literal["accepted"] = "accepted"
 
 
+class TicketStatus(BaseModel):
+    """A ticket and, once processed, what the agent decided."""
+
+    ticket_id: str
+    # received -> processed / flagged / failed (set by the background task)
+    status: Literal["received", "processed", "flagged", "failed"]
+    category: str | None
+    result: dict | None  # None until the agent has finished
+
+
 class ReplyIn(BaseModel):
     """What the agent sends when it writes back to the helpdesk."""
 

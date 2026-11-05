@@ -5,14 +5,18 @@ from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
 
+from app.config import TRUSTED_PROXY_HOPS
+
 
 def client_ip(request: Request) -> str:
-    # Behind Cloud Run's proxy, request.client is the proxy, not the caller.
-    # The proxy appends the real caller's IP to the end of X-Forwarded-For.
-    # We take the last entry, because earlier ones can be faked by the client.
+    # Behind proxies, request.client is the nearest proxy, not the visitor.
+    # Each proxy appends the IP it received the request from to X-Forwarded-For,
+    # so with N trusted proxies the visitor is the Nth entry from the end.
+    # Entries further left can be faked by the client, so we never use them.
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[-1].strip()
+        ips = [ip.strip() for ip in forwarded.split(",")]
+        return ips[-min(TRUSTED_PROXY_HOPS, len(ips))]
     return request.client.host if request.client else "unknown"
 
 

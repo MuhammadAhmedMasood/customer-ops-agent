@@ -1,6 +1,6 @@
 """API tests: order lookup, helpdesk replies and approval, webhook."""
 
-from app.api import webhook
+from app.api import rate_limit, webhook
 from app.api.models import MAX_MESSAGE_CHARS
 
 TICKET = {
@@ -78,6 +78,23 @@ def test_webhook_rejects_duplicate_and_bad_payload(client, monkeypatch):
     assert client.post("/webhook/ticket", json=bad).status_code == 422
 
 
+def test_ticket_status_before_processing(client, monkeypatch):
+    monkeypatch.setattr(webhook, "process_ticket", lambda ticket_id: None)
+    client.post("/webhook/ticket", json=TICKET)
+
+    response = client.get("/tickets/T-1")
+    assert response.status_code == 200
+    assert response.json() == {"ticket_id": "T-1", "status": "received", "category": None, "result": None}
+    assert client.get("/tickets/T-404").status_code == 404
+
+
+def test_demo_page_is_served(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "ShopCo Customer Ops Agent" in response.text
+
+
 def test_webhook_rejects_oversized_message_before_any_processing(client, monkeypatch):
     processed = []
     monkeypatch.setattr(webhook, "process_ticket", processed.append)
@@ -111,3 +128,17 @@ def test_webhook_rate_limit_per_ip(client, monkeypatch):
 
     # A different IP has its own limit.
     assert send("T-11", "2.2.2.2").status_code == 202
+
+
+def test_client_ip_with_two_trusted_proxies(client, monkeypatch):
+    """Behind Vercel + Cloud Run: 'fake, visitor, vercel' -> the visitor."""
+    monkeypatch.setattr(rate_limit, "TRUSTED_PROXY_HOPS", 2)
+    monkeypatch.setattr(webhook, "process_ticket", lambda ticket_id: None)
+
+    for i in range(10):
+        headers = {"X-Forwarded-For": f"9.9.9.{i}, 1.1.1.1, 76.76.21.21"}  # client fakes the first entry
+        client.post("/webhook/ticket", json={**TICKET, "ticket_id": f"T-{i}"}, headers=headers)
+
+    headers = {"X-Forwarded-For": "8.8.8.8, 1.1.1.1, 76.76.21.21"}
+    blocked = client.post("/webhook/ticket", json={**TICKET, "ticket_id": "T-10"}, headers=headers)
+    assert blocked.status_code == 429  # faking the first entry didn't give a fresh limit

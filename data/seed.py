@@ -73,6 +73,7 @@ def seed(db_path: Path = DB_PATH):
             order_id       TEXT,
             status         TEXT NOT NULL DEFAULT 'received',
             category       TEXT,
+            result         TEXT,  -- JSON summary of the agent run, for the demo page
             created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
