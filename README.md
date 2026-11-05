@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/MuhammadAhmedMasood/customer-ops-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/MuhammadAhmedMasood/customer-ops-agent/actions/workflows/ci.yml)
 
+**Live demo: [ops-agent.dizzlerai.com](https://ops-agent.dizzlerai.com)**
+
 **A webhook-triggered LangGraph agent that reads support tickets, looks up the order, checks policy with cited RAG, and drafts a reply or action, with business rules and human approval enforced in code.**
 
 ShopCo is a fictional UK online retailer. The order system and helpdesk are mock FastAPI services, so the whole thing runs locally or on Cloud Run with one container.
@@ -105,7 +107,19 @@ docker run --rm -p 8080:8080 --env-file .env shopco-agent    # http://localhost:
 
 ## Deployment
 
-Runs on Google Cloud Run (`europe-west2`) from the Dockerfile, with API keys in Secret Manager. Key settings: `--no-cpu-throttling` so the background agent keeps CPU after the 202 response, and `--max-instances 1` because SQLite lives inside the container. The service is currently private (IAM-authenticated).
+```
+browser ──► ops-agent.dizzlerai.com (Vercel, rewrite only) ──► Cloud Run (europe-west2) ──► OpenAI / Langfuse
+```
+
+- **Backend:** Google Cloud Run, built from the Dockerfile, with API keys in Secret Manager. Key settings: `--no-cpu-throttling` so the background agent keeps CPU after the 202 response, `--max-instances 1` because SQLite lives inside the container, and `TRUSTED_PROXY_HOPS=2` so the rate limiter finds the visitor's IP behind Vercel and Cloud Run.
+- **Front door:** a Vercel project with Root Directory `vercel/`, whose `vercel.json` rewrites every path to the Cloud Run URL. The browser only talks to one origin, so no CORS is needed. Vercel redeploys on every push, but backend changes need a Cloud Run deploy:
+
+```bash
+gcloud run deploy shopco-agent --source . --region europe-west2 \
+  --allow-unauthenticated --no-cpu-throttling --max-instances 1 --memory 1Gi \
+  --set-secrets "OPENAI_API_KEY=openai-api-key:latest,LANGFUSE_PUBLIC_KEY=langfuse-public-key:latest,LANGFUSE_SECRET_KEY=langfuse-secret-key:latest" \
+  --set-env-vars "LANGFUSE_BASE_URL=https://cloud.langfuse.com,TRUSTED_PROXY_HOPS=2"
+```
 
 ## Project layout
 
@@ -132,6 +146,7 @@ tests/               pytest suite
 - The mock helpdesk and order APIs have no authentication. If the service is made public, anyone could read replies or call `/approve`.
 - The webhook has no signature (HMAC) verification, which a real helpdesk integration would require.
 - Rate limiting is in memory, per instance and per IP. A real helpdesk sends all webhooks from a few IPs, so production would rely on signatures plus a shared limiter (e.g. Redis).
+- The Cloud Run URL is also public. Requests sent to it directly (bypassing Vercel) can fake their IP for rate limiting; the OpenAI spending limit is the backstop.
 - The injection detector is a regex first layer and can be bypassed by paraphrases or other languages. Later layers (data delimiters, structured output, no LLM tool choice, citation checks, code-enforced rules) limit the damage.
 - Langfuse traces contain customer names, emails and messages. Production would mask personal data.
 
